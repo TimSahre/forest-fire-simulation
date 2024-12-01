@@ -1,5 +1,7 @@
 # Forest Fire Simulation 🌲🔥
 
+![Forest Fire Simulation](forest_fire_with_metrics.gif)
+
 This project simulates forest growth and fires using a grid-based approach, leveraging Python and visualization tools like Matplotlib. The simulation dynamically visualizes forest states, including tree growth, fires, clouds, and ash, and is highly configurable through a YAML file.
 
 ## Features

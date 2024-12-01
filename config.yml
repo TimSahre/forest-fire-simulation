@@ -1,38 +1,180 @@
-# Simulation Configuration for WFSim
-simulation:
-  grid:
-    height: 100  # Height of the grid
-    width: 100   # Width of the grid
-  probabilities:
-    fire: 0.0001         # Base probability of lightning strike
-    tree_growth: 0.05    # Probability of new tree growth
-  terrain:
-    bedrock_fraction: 0.01  # Fraction of bedrock in the grid
-    water_fraction: 0.02    # Fraction of water in the grid
-  ash:
-    lifetime: 20  # Lifetime of ash in steps
-  temperature:
-    average: 20         # Average daily temperature
-    amplitude: 5        # Amplitude of daily temperature variation
-    noise: 2            # Noise level for temperature
-  wind:
-    direction: random   # Wind direction ('random' or specific: N, S, E, W, etc.)
-  forest:
-    fraction: 0.05  # Fraction of the grid covered by forest
+# Notebook setup: Install necessary libraries if not already installed
+try:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import animation
+    from matplotlib import colors
+    from matplotlib.colors import BoundaryNorm
+    import yaml
+except ImportError:
+    !pip install numpy matplotlib pyyaml --quiet
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import animation
+    from matplotlib import colors
+    from matplotlib.colors import BoundaryNorm
+    import yaml
 
-animation:
-  frames: 400    # Total number of animation frames
-  interval: 100  # Interval between frames in milliseconds
-  output_file: 'forest_fire_with_metrics.gif'  # Output file name
-  fps: 10        # Frames per second
+# Load configuration from YAML file
+with open('config.yml', 'r') as file:
+    config = yaml.safe_load(file)
 
-visualization:
-  colors:
-    - steelblue   # Water
-    - grey        # Bedrock
-    - black       # Ash
-    - lightgreen  # Grass
-    - forestgreen # Trees
-    - red         # Fire
-    - white       # Clouds
-  colormap_bounds: [-3, -2, -1, 0, 1, 2, 3, 4]  # Boundaries for colormap
+# Extract configuration parameters
+sim_config = config['simulation']
+anim_config = config['animation']
+vis_config = config['visualization']
+
+class WFSim:
+    def __init__(self, config):
+        """
+        Initialize the simulation with probabilities for fire, tree growth,
+        bedrock, water, temperature, and wind, along with grid dimensions.
+        """
+        # Unpack configuration
+        grid = config['grid']
+        probabilities = config['probabilities']
+        terrain = config['terrain']
+        ash = config['ash']
+        temperature = config['temperature']
+        wind = config['wind']
+        forest = config['forest']
+
+        self.h = grid['height']
+        self.w = grid['width']
+        self.f = probabilities['fire']
+        self.p = probabilities['tree_growth']
+        self.bedrock = terrain['bedrock_fraction']
+        self.water = terrain['water_fraction']
+        self.ash_lifetime = ash['lifetime']
+        self.avg_temp = temperature['average']
+        self.temp_amplitude = temperature['amplitude']
+        self.temp_noise = temperature['noise']
+        self.wind = wind['direction']
+        self.forest_fraction = forest['fraction']
+
+        # Initialize wind
+        valid_wind_directions = ['S', 'N', 'W', 'E', 'SW', 'SE', 'NW', 'NE']
+        self.wind = np.random.choice(valid_wind_directions) if self.wind == 'random' else self.wind
+        self.offsets = {
+            'N': [(-1, 0)], 'S': [(1, 0)], 'E': [(0, 1)], 'W': [(0, -1)],
+            'NE': [(-1, 1)], 'NW': [(-1, -1)], 'SE': [(1, 1)], 'SW': [(1, -1)]
+        }
+
+        # Initialize the grid with default EMPTY cells
+        self.landscape = np.zeros((self.h, self.w))
+        self.ash_timer = np.zeros((self.h, self.w), dtype=int)
+        self.temp = self.generate_temperature()
+        self.clouds = np.zeros((self.h, self.w), dtype=bool)
+
+        # Generate initial features
+        self.generate_initial_cloud_clusters()
+        self.create_stone_clusters()
+        self.create_water_clusters()
+        self.create_forest_clusters(self.forest_fraction)
+
+    def generate_temperature(self):
+        hours = np.arange(24)
+        temperatures = self.avg_temp + self.temp_amplitude * np.sin(2 * np.pi * hours / 24 - np.pi / 2)
+        temperatures += np.random.normal(0, self.temp_noise, 24)  # Add noise
+        return temperatures
+
+    def generate_initial_cloud_clusters(self):
+        num_clusters = 3
+        cluster_size_range = (10, 20)
+        for _ in range(num_clusters):
+            start_i, start_j = np.random.randint(0, self.h), np.random.randint(0, self.w)
+            cluster_size = np.random.randint(*cluster_size_range)
+            self.generate_cluster(start_i, start_j, cluster_size, is_cloud=True)
+
+    def generate_cluster(self, i, j, remaining, is_cloud=False, forest=False):
+        if remaining <= 0 or not (0 <= i < self.h and 0 <= j < self.w):
+            return
+        if is_cloud and self.clouds[i, j]: return
+        if forest and self.landscape[i, j] != 0: return
+        if not is_cloud and not forest and self.landscape[i, j] != 0: return
+        if is_cloud:
+            self.clouds[i, j] = True
+        elif forest:
+            self.landscape[i, j] = 1
+        else:
+            self.landscape[i, j] = -3
+        offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        np.random.shuffle(offsets)
+        for di, dj in offsets:
+            self.generate_cluster(i + di, j + dj, remaining - 1, is_cloud, forest)
+
+    def create_stone_clusters(self):
+        total_stone_cells = int(self.h * self.w * self.bedrock)
+        while total_stone_cells > 0:
+            i, j = np.random.randint(0, self.h), np.random.randint(0, self.w)
+            if self.landscape[i, j] == 0:
+                cluster_size = min(np.random.randint(10, 20), total_stone_cells)
+                self.generate_cluster(i, j, cluster_size)
+                total_stone_cells -= cluster_size
+
+    def create_water_clusters(self):
+        total_water_cells = int(self.h * self.w * self.water)
+        while total_water_cells > 0:
+            i, j = np.random.randint(0, self.h), np.random.randint(0, self.w)
+            if self.landscape[i, j] == 0:
+                cluster_size = min(np.random.randint(40, 50), total_water_cells)
+                self.generate_cluster(i, j, cluster_size)
+                total_water_cells -= cluster_size
+
+    def create_forest_clusters(self, forest_fraction):
+        total_forest_cells = int(self.h * self.w * forest_fraction)
+        while total_forest_cells > 0:
+            i, j = np.random.randint(1, self.h - 1), np.random.randint(1, self.w - 1)
+            if self.landscape[i, j] == 0:
+                cluster_size = min(np.random.randint(20, 50), total_forest_cells)
+                self.generate_cluster(i, j, cluster_size, forest=True)
+                total_forest_cells -= cluster_size
+
+    def step(self, step):
+        EMPTY, TREE, FIRE, WATER, BEDROCK, ASH = 0, 1, 2, -3, -2, -1
+        new_landscape = self.landscape.copy()
+        for i in range(1, self.h - 1):
+            for j in range(1, self.w - 1):
+                cell = self.landscape[i, j]
+                if cell == TREE and np.random.random() < self.f:
+                    new_landscape[i, j] = FIRE
+                elif cell == FIRE:
+                    new_landscape[i, j] = ASH
+        self.landscape = new_landscape
+
+    def get_metrics(self, step):
+        total_cells = self.h * self.w
+        tree_fraction = np.sum(self.landscape == 1) / total_cells
+        grass_fraction = np.sum(self.landscape == 0) / total_cells
+        burned_fraction = np.sum(self.landscape == -1) / total_cells
+        return {
+            "step": step,
+            "tree_fraction": tree_fraction,
+            "grass_fraction": grass_fraction,
+            "burned_fraction": burned_fraction
+        }
+
+def update(frame):
+    Sim.step(frame)
+    metrics = Sim.get_metrics(frame)
+    combined = Sim.landscape.copy()
+    im.set_data(combined)
+    return [im]
+
+# Visualization setup
+colors_list = vis_config['colors']
+cmap = colors.ListedColormap(colors_list)
+bounds = vis_config['colormap_bounds']
+norm = BoundaryNorm(bounds, cmap.N)
+
+# Initialize the simulation
+Sim = WFSim(sim_config)
+
+# Set up the plot
+fig, ax = plt.subplots(figsize=(8, 8))
+im = ax.imshow(Sim.landscape, cmap=cmap, norm=norm)
+
+# Run the animation
+ani = animation.FuncAnimation(fig, update, frames=anim_config['frames'], interval=anim_config['interval'])
+ani.save(anim_config['output_file'], fps=anim_config['fps'])
+plt.show()
