@@ -1,0 +1,9 @@
+name: forest_fire_simulation  # Name of the Conda environment
+channels:
+  - conda-forge  # Additional channels for dependencies
+  - defaults
+dependencies:
+  - python=3.9  # Specify Python version (can be adjusted as needed)
+  - numpy       # Numpy for numerical computations
+  - matplotlib  # Matplotlib for visualization
+  - pyyaml      # PyYAML for loading and processing YAML files

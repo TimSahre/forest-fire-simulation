@@ -1,0 +1,38 @@
+# Simulation Configuration for WFSim
+simulation:
+  grid:
+    height: 100  # Height of the grid
+    width: 100   # Width of the grid
+  probabilities:
+    fire: 0.0001         # Base probability of lightning strike
+    tree_growth: 0.05    # Probability of new tree growth
+  terrain:
+    bedrock_fraction: 0.01  # Fraction of bedrock in the grid
+    water_fraction: 0.02    # Fraction of water in the grid
+  ash:
+    lifetime: 20  # Lifetime of ash in steps
+  temperature:
+    average: 20         # Average daily temperature
+    amplitude: 5        # Amplitude of daily temperature variation
+    noise: 2            # Noise level for temperature
+  wind:
+    direction: random   # Wind direction ('random' or specific: N, S, E, W, etc.)
+  forest:
+    fraction: 0.05  # Fraction of the grid covered by forest
+
+animation:
+  frames: 400    # Total number of animation frames
+  interval: 100  # Interval between frames in milliseconds
+  output_file: 'forest_fire_with_metrics.gif'  # Output file name
+  fps: 10        # Frames per second
+
+visualization:
+  colors:
+    - steelblue   # Water
+    - grey        # Bedrock
+    - black       # Ash
+    - lightgreen  # Grass
+    - forestgreen # Trees
+    - red         # Fire
+    - white       # Clouds
+  colormap_bounds: [-3, -2, -1, 0, 1, 2, 3, 4]  # Boundaries for colormap
